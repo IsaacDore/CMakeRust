@@ -1,4 +1,4 @@
-function(cargo_build)
+function(cargo_build_single_target)
     cmake_parse_arguments(CARGO "" "NAME" "" ${ARGN})
     string(REPLACE "-" "_" LIB_NAME ${CARGO_NAME})
 
@@ -32,39 +32,64 @@ function(cargo_build)
         endif()
     endif()
 
-    if(NOT CMAKE_BUILD_TYPE)
+    if(NOT CARGO_BUILD_TYPE)
         set(LIB_BUILD_TYPE "debug")
-    elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")
+    elseif(${CARGO_BUILD_TYPE} STREQUAL "Release")
         set(LIB_BUILD_TYPE "release")
     else()
         set(LIB_BUILD_TYPE "debug")
     endif()
 
-    set(LIB_FILE "${CARGO_TARGET_DIR}/${LIB_TARGET}/${LIB_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    if(NOT TARGET ${CARGO_NAME}_target_${LIB_BUILD_TYPE})
+        set(LIB_FILE "${CARGO_TARGET_DIR}/${LIB_TARGET}/${LIB_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
-	if(IOS)
-		set(CARGO_ARGS "lipo")
-	else()
-    	set(CARGO_ARGS "build")
-		list(APPEND CARGO_ARGS "--target" ${LIB_TARGET})
-	endif()
+        if(IOS)
+            set(CARGO_ARGS "lipo")
+        else()
+            set(CARGO_ARGS "build")
+            list(APPEND CARGO_ARGS "--target" ${LIB_TARGET})
+        endif()
 
-    if(${LIB_BUILD_TYPE} STREQUAL "release")
-        list(APPEND CARGO_ARGS "--release")
+        if(${LIB_BUILD_TYPE} STREQUAL "release")
+            list(APPEND CARGO_ARGS "--release")
+        endif()
+
+        file(GLOB_RECURSE LIB_SOURCES "*.rs")
+
+        set(CARGO_ENV_COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}")
+
+        add_custom_command(
+            OUTPUT ${LIB_FILE}
+            COMMAND ${CARGO_ENV_COMMAND} ${CARGO_EXECUTABLE} ARGS ${CARGO_ARGS}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            DEPENDS ${LIB_SOURCES}
+            COMMENT "running cargo")
+        add_custom_target(${CARGO_NAME}_target_${LIB_BUILD_TYPE} ALL DEPENDS ${LIB_FILE})
+        add_library(${CARGO_NAME}_${LIB_BUILD_TYPE} STATIC IMPORTED GLOBAL)
+        add_dependencies(${CARGO_NAME}_${LIB_BUILD_TYPE} ${CARGO_NAME}_target_${LIB_BUILD_TYPE})
+        set_target_properties(${CARGO_NAME}_${LIB_BUILD_TYPE} PROPERTIES IMPORTED_LOCATION ${LIB_FILE})
+    endif()
+endfunction()
+
+function(cargo_build_multiple_target)
+    cmake_parse_arguments(CARGO "" "NAME" "" ${ARGN})
+    foreach(VARCONFIG ${CMAKE_CONFIGURATION_TYPES})
+        set(CARGO_BUILD_TYPE VARCONFIG)
+        cargo_build_single_target(NAME ${CARGO_NAME})
+    endforeach(VARCONFIG)
+endfunction()
+
+function(cargo_build)
+    cmake_parse_arguments(CARGO "" "NAME" "" ${ARGN})
+    if(CMAKE_BUILD_TYPE)
+        cargo_build_single_target(NAME ${CARGO_NAME})
+    else()
+        if(NOT CMAKE_CONFIGURATION_TYPES)
+            cargo_build_single_target(NAME ${CARGO_NAME})
+        endif()
     endif()
 
-    file(GLOB_RECURSE LIB_SOURCES "*.rs")
-
-    set(CARGO_ENV_COMMAND ${CMAKE_COMMAND} -E env "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}")
-
-    add_custom_command(
-        OUTPUT ${LIB_FILE}
-        COMMAND ${CARGO_ENV_COMMAND} ${CARGO_EXECUTABLE} ARGS ${CARGO_ARGS}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        DEPENDS ${LIB_SOURCES}
-        COMMENT "running cargo")
-    add_custom_target(${CARGO_NAME}_target ALL DEPENDS ${LIB_FILE})
-    add_library(${CARGO_NAME} STATIC IMPORTED GLOBAL)
-    add_dependencies(${CARGO_NAME} ${CARGO_NAME}_target)
-    set_target_properties(${CARGO_NAME} PROPERTIES IMPORTED_LOCATION ${LIB_FILE})
+    if(CMAKE_CONFIGURATION_TYPES)
+        cargo_build_multiple_target(NAME ${CARGO_NAME})
+    endif()
 endfunction()
