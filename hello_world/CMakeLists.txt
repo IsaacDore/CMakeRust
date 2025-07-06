@@ -1,7 +1,7 @@
 
 add_executable(helloworld hello.c)
 if(WIN32)
-    target_link_libraries(helloworld test-lib ws2_32 userenv)
+    target_link_libraries(helloworld test-lib ws2_32 userenv ntdll)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
     target_link_libraries(helloworld test-lib resolv)
 else()
