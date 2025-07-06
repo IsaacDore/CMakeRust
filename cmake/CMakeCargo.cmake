@@ -32,15 +32,28 @@ function(cargo_build)
         endif()
     endif()
 
-    if(NOT CMAKE_BUILD_TYPE)
-        set(LIB_BUILD_TYPE "debug")
-    elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")
-        set(LIB_BUILD_TYPE "release")
+    get_cmake_property(CMC_IS_MULTICONFIG GENERATOR_IS_MULTI_CONFIG)
+
+    if(CMC_IS_MULTICONFIG)
+        set(LIB_DIR $<$<CONFIG:DEBUG>:debug>$<$<CONFIG:RELEASE>:release>)
+        set(LIB_BUILD_ARG $<$<CONFIG:RELEASE>:release>)
+        set(LIB_FILE_REL "${CARGO_TARGET_DIR}/${LIB_TARGET}/release/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+        set(LIB_FILE_DEB "${CARGO_TARGET_DIR}/${LIB_TARGET}/debug/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
     else()
-        set(LIB_BUILD_TYPE "debug")
+        if(NOT CMAKE_BUILD_TYPE)
+            set(LIB_BUILD_TYPE "debug")
+        elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")
+            set(LIB_BUILD_TYPE "release")
+        else()
+            set(LIB_BUILD_TYPE "debug")
+        endif()
+        set(LIB_DIR ${LIB_BUILD_TYPE})
+        if(LIB_BUILD_TYPE STREQUAL "release")
+            set(LIB_BUILD_ARG release)
+        endif()
     endif()
 
-    set(LIB_FILE "${CARGO_TARGET_DIR}/${LIB_TARGET}/${LIB_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    set(LIB_FILE "${CARGO_TARGET_DIR}/${LIB_TARGET}/${LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}${LIB_NAME}${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
 	if(IOS)
 		set(CARGO_ARGS "lipo")
@@ -48,10 +61,8 @@ function(cargo_build)
     	set(CARGO_ARGS "build")
 		list(APPEND CARGO_ARGS "--target" ${LIB_TARGET})
 	endif()
-
-    if(${LIB_BUILD_TYPE} STREQUAL "release")
-        list(APPEND CARGO_ARGS "--release")
-    endif()
+    
+    list(APPEND CARGO_ARGS "--${LIB_BUILD_ARG}")
 
     file(GLOB_RECURSE LIB_SOURCES "*.rs")
 
@@ -66,5 +77,14 @@ function(cargo_build)
     add_custom_target(${CARGO_NAME}_target ALL DEPENDS ${LIB_FILE})
     add_library(${CARGO_NAME} STATIC IMPORTED GLOBAL)
     add_dependencies(${CARGO_NAME} ${CARGO_NAME}_target)
-    set_target_properties(${CARGO_NAME} PROPERTIES IMPORTED_LOCATION ${LIB_FILE})
+
+    if(CMC_IS_MULTICONFIG)
+        set_target_properties(${CARGO_NAME} PROPERTIES
+            IMPORTED_CONFIGURATIONS "Debug"
+            IMPORTED_LOCATION ${LIB_FILE_REL}
+            IMPORTED_LOCATION_DEBUG ${LIB_FILE_DEB}
+        )
+    else()
+        set_target_properties(${CARGO_NAME} PROPERTIES IMPORTED_LOCATION ${LIB_FILE})
+    endif()
 endfunction()
